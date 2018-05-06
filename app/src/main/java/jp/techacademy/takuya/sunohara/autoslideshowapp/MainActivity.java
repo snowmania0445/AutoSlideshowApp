@@ -13,7 +13,10 @@ import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
-import android.util.Log;
+import java.util.Timer;
+import java.util.TimerTask;
+import android.os.Handler;
+import android.support.design.widget.Snackbar;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -25,12 +28,14 @@ public class MainActivity extends AppCompatActivity {
     Button nextButton;
 
     Uri [] imageUriArray; //取得したURIを配列に格納
+    int currentImageIndex = 0; //表示している画像のimageUriArray配列におけるインデックス
 
-    int currentImageIndex = 0;
+    Timer mTimer;
 
+    Handler mHandler = new Handler();
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -38,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
         startStopButton = (Button)findViewById(R.id.startStopButton);
         nextButton = (Button)findViewById(R.id.nextButton);
 
-        // Android 6.0以降の場合
+        // permission Android 6.0以降の場合
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             // パーミッションの許可状態を確認する
             if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
@@ -53,17 +58,40 @@ public class MainActivity extends AppCompatActivity {
             getContents();
         }
 
+        //戻るボタン
         previousButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                //getPreviousImage();
+                //permissionが拒否された場合はsnackbarでメッセージを出す。nextButton,startStopButtonについても同様。
+                if (imageUriArray != null) {
+                    getPreviousImage();
+                } else {
+                    snackbarMessage(v);
+                }
             }
         });
 
+        //進むボタン
         nextButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                getNextImage();
+                if (imageUriArray != null) {
+                    getNextImage();
+                } else {
+                    snackbarMessage(v);
+                }
+            }
+        });
+
+        //再生・停止ボタン
+        startStopButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (imageUriArray != null) {
+                    startStopSlideshow();
+                } else {
+                    snackbarMessage(v);
+                }
             }
         });
     }
@@ -82,22 +110,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void getContents() {
-
         // 画像の情報を取得する
         ContentResolver resolver = getContentResolver();
         Cursor cursor = resolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI, // データの種類
-                null, // 項目(null = 全項目)
-                null, // フィルタ条件(null = フィルタなし)
-                null, // フィルタ用パラメータ
-                null // ソート (null ソートなし)
+                null,
+                null,
+                null,
+                null
         );
 
-        int cursorLength = cursor.getCount();
-        int arraySubstIndex = -1; //配列への代入用のインデックス
-        imageUriArray = new Uri[cursorLength];
+        int numberOfImages = cursor.getCount();  //データ数＝カーソルの行数（imageUriArrayの宣言用）
+        imageUriArray = new Uri[numberOfImages];
+        int arraySubstIndex = -1; //取得したURIを配列へ代入するためのインデックス
 
         if (cursor.moveToFirst()) {
+            //URIを取得し、順次配列に代入
             do {
                 int fieldIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID);
                 Long id = cursor.getLong(fieldIndex);
@@ -111,7 +139,7 @@ public class MainActivity extends AppCompatActivity {
         cursor.close();
 
         ImageView imageView = (ImageView) findViewById(R.id.imageView);
-        imageView.setImageURI(imageUriArray[0]);
+        imageView.setImageURI(imageUriArray[currentImageIndex]);
     }
 
     private void getNextImage () {
@@ -127,25 +155,50 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /*private void getPreviousImage(Cursor cursor) {
-
-        if (cursor.moveToPrevious()) {
-            int fieldIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID);
-            Long id = cursor.getLong(fieldIndex);
-            Uri imageUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
-
+    private void getPreviousImage() {
+        //現在の画像のインデックスが0なら、最後の画像を表示する。それ以外は画像のインデックスを1戻して表示する。
+        if (currentImageIndex  == 0) {
+            currentImageIndex = imageUriArray.length -1;
             ImageView imageView = (ImageView) findViewById(R.id.imageView);
-            imageView.setImageURI(imageUri);
-            Log.d("DEBUG", "前の画像へ");
-        } else if (cursor.moveToFirst()) {
-            int fieldIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID);
-            Long id = cursor.getLong(fieldIndex);
-            Uri imageUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
-
+            imageView.setImageURI(imageUriArray[currentImageIndex]);
+        } else {
+            currentImageIndex -= 1;
             ImageView imageView = (ImageView) findViewById(R.id.imageView);
-            imageView.setImageURI(imageUri);
-            Log.d("DEBUG", "最後の画像へ");
+            imageView.setImageURI(imageUriArray[currentImageIndex]);
         }
-        cursor.close();
-    }*/
+    }
+
+    private void startStopSlideshow() {
+        if (mTimer == null) {
+            startStopButton.setText("停止");
+            previousButton.setEnabled(false);
+            nextButton.setEnabled(false);
+            // タイマーの作成
+            mTimer = new Timer();
+            // タイマーの始動
+            mTimer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    mHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            getNextImage();
+                        }
+                    });
+                }
+            }, 2000, 2000);
+        } else {
+            startStopButton.setText("再生");
+            previousButton.setEnabled(true);
+            nextButton.setEnabled(true);
+
+            //タイマーを破棄
+            mTimer.cancel();
+            mTimer = null;
+        }
+    }
+
+    private void snackbarMessage(View v) {
+        Snackbar.make(v, "画像の使用を承認してください。", Snackbar.LENGTH_LONG).show();
+    }
 }
