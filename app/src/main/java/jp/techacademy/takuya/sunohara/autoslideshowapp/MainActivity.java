@@ -15,6 +15,7 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.util.Log;
 
+
 public class MainActivity extends AppCompatActivity {
 
     private static final int PERMISSIONS_REQUEST_CODE = 100;
@@ -23,15 +24,10 @@ public class MainActivity extends AppCompatActivity {
     Button startStopButton;
     Button nextButton;
 
-    // 画像の情報を取得する
-    ContentResolver resolver = getContentResolver();
-    Cursor cursor = resolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, // データの種類
-            null, // 項目(null = 全項目)
-            null, // フィルタ条件(null = フィルタなし)
-            null, // フィルタ用パラメータ
-            null // ソート (null ソートなし)
-    );
+    Uri [] imageUriArray; //取得したURIを配列に格納
+
+    int currentImageIndex = 0;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,27 +43,27 @@ public class MainActivity extends AppCompatActivity {
             // パーミッションの許可状態を確認する
             if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
                 // 許可されている
-                getInitialImage(cursor);
+                getContents();
             } else {
                 // 許可されていないので許可ダイアログを表示する
                 requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, PERMISSIONS_REQUEST_CODE);
             }
             // Android 5系以下の場合
         } else {
-            getInitialImage(cursor);
+            getContents();
         }
 
         previousButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                getPreviousImage(cursor);
+                //getPreviousImage();
             }
         });
 
         nextButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                getNextImage(cursor);
+                getNextImage();
             }
         });
     }
@@ -77,7 +73,7 @@ public class MainActivity extends AppCompatActivity {
         switch (requestCode) {
             case PERMISSIONS_REQUEST_CODE:
                 if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    getInitialImage(cursor);
+                    getContents();
                 }
                 break;
             default:
@@ -85,50 +81,53 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void getInitialImage(Cursor cursor) {
+    private void getContents() {
+
+        // 画像の情報を取得する
+        ContentResolver resolver = getContentResolver();
+        Cursor cursor = resolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, // データの種類
+                null, // 項目(null = 全項目)
+                null, // フィルタ条件(null = フィルタなし)
+                null, // フィルタ用パラメータ
+                null // ソート (null ソートなし)
+        );
+
+        int cursorLength = cursor.getCount();
+        int arraySubstIndex = -1; //配列への代入用のインデックス
+        imageUriArray = new Uri[cursorLength];
 
         if (cursor.moveToFirst()) {
-            int fieldIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID);
-            Long id = cursor.getLong(fieldIndex);
-            Uri imageUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+            do {
+                int fieldIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID);
+                Long id = cursor.getLong(fieldIndex);
+                Uri imageUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
 
-            ImageView imageView = (ImageView) findViewById(R.id.imageView);
-            imageView.setImageURI(imageUri);
+                arraySubstIndex += 1;
+                imageUriArray[arraySubstIndex] = imageUri;
 
+            } while (cursor.moveToNext());
         }
         cursor.close();
+
+        ImageView imageView = (ImageView) findViewById(R.id.imageView);
+        imageView.setImageURI(imageUriArray[0]);
     }
 
-    private void getNextImage (Cursor cursor) {
-
-        int currentPosition;
-        currentPosition = cursor.getPosition();
-        Log.d("DEBUG", Integer.toString(currentPosition));
-
-        if (cursor.moveToNext()) {
-            int fieldIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID);
-            Long id = cursor.getLong(fieldIndex);
-            Uri imageUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
-
-            currentPosition = cursor.getPosition();
-            Log.d("DEBUG", Integer.toString(currentPosition));
-
+    private void getNextImage () {
+        //現在の画像のインデックスがURI（画像）の総数と等しい（=最後の画像を表示している）時、先頭の画像を表示する。それ以外の時は画像のインデックスを1進めて表示する。
+        if ((currentImageIndex + 1) == imageUriArray.length) {
+            currentImageIndex = 0;
             ImageView imageView = (ImageView) findViewById(R.id.imageView);
-            imageView.setImageURI(imageUri);
-            Log.d("DEBUG", "次の画像へ");
-        } else if (cursor.moveToLast()) {
-            int fieldIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID);
-            Long id = cursor.getLong(fieldIndex);
-            Uri imageUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
-
+            imageView.setImageURI(imageUriArray[currentImageIndex]);
+        } else {
+            currentImageIndex += 1;
             ImageView imageView = (ImageView) findViewById(R.id.imageView);
-            imageView.setImageURI(imageUri);
-            Log.d("DEBUG", "最初の画像へ");
+            imageView.setImageURI(imageUriArray[currentImageIndex]);
         }
-        cursor.close();
     }
 
-    private void getPreviousImage(Cursor cursor) {
+    /*private void getPreviousImage(Cursor cursor) {
 
         if (cursor.moveToPrevious()) {
             int fieldIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID);
@@ -148,5 +147,5 @@ public class MainActivity extends AppCompatActivity {
             Log.d("DEBUG", "最後の画像へ");
         }
         cursor.close();
-    }
+    }*/
 }
